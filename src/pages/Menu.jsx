@@ -1,6 +1,5 @@
-
 import React, { useState, useEffect } from "react";
-import { MenuItem, CafeSettings } from "../entities";
+import { MenuItem, CafeSettings, Category } from "../entities";
 import { Link } from "react-router-dom";
 import { createPageUrl, formatPrice } from "../utils";
 import { Coffee, MapPin, Instagram, Phone, Settings, Star } from "lucide-react";
@@ -11,21 +10,12 @@ import { motion, AnimatePresence } from "framer-motion";
 
 import { MenuItemCard, CategorySection, CafeHeader } from "../components/menu";
 
-const categories = [
-  { id: "coffee", name: "قهوه", emoji: "☕", color: "from-amber-400 to-orange-500" },
-  { id: "shake", name: "شیک", emoji: "🥤", color: "from-pink-400 to-rose-500" },
-  { id: "cold_bar", name: "بار سرد", emoji: "🧊", color: "from-sky-400 to-blue-500" },
-  { id: "hot_bar", name: "بار گرم", emoji: "🔥", color: "from-red-500 to-orange-500" },
-  { id: "tea", name: "چای", emoji: "🍃", color: "from-lime-400 to-green-500" },
-  { id: "cake", name: "کیک", emoji: "🍰", color: "from-fuchsia-500 to-pink-600" },
-  { id: "food", name: "غذا", emoji: "🍽️", color: "from-indigo-400 to-purple-500" },
-  { id: "breakfast", name: "صبحانه", emoji: "🌅", color: "from-yellow-400 to-amber-500" }
-];
-
 export default function MenuPage() {
   const [menuItems, setMenuItems] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [cafeSettings, setCafeSettings] = useState({});
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("all");
 
   useEffect(() => {
@@ -34,180 +24,176 @@ export default function MenuPage() {
 
   const loadData = async () => {
     setLoading(true);
+    setError(null);
     try {
       console.log("=== Menu.loadData() START ===");
       
-      // Only seed if no data exists
-      console.log("Checking if data exists...");
-      const existingItems = await MenuItem.list();
-      const existingSettings = await CafeSettings.list();
-      
-      if (existingItems.length === 0) {
-        console.log("No menu items found, seeding data...");
-        try {
-          await MenuItem.seed();
-          console.log("MenuItem seeded successfully");
-        } catch (error) {
-          console.error("Error seeding MenuItem:", error);
-        }
-      } else {
-        console.log("Menu items already exist, skipping seed");
-      }
-      
-      if (existingSettings.length === 0) {
-        console.log("No settings found, seeding data...");
-        try {
-          await CafeSettings.seed();
-          console.log("CafeSettings seeded successfully");
-        } catch (error) {
-          console.error("Error seeding CafeSettings:", error);
-        }
-      } else {
-        console.log("Settings already exist, skipping seed");
-      }
-      
-      console.log("Loading data...");
-      
-      // Load all items first
-      const allItems = await MenuItem.list();
-      console.log("All items loaded:", allItems);
-      
-      // Filter available items
-      const availableItems = allItems.filter(item => item.is_available !== false);
-      console.log("Available items:", availableItems);
-      
-      // Sort by order_index
-      const sortedItems = availableItems.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
-      console.log("Sorted items:", sortedItems);
-      
-      const settings = await CafeSettings.list();
-      
-      console.log("Menu loaded with items:", sortedItems.length);
-      console.log("Available categories:", [...new Set(sortedItems.map(item => item.category))]);
-      console.log("Coffee items:", sortedItems.filter(item => item.category === "coffee").length);
-      console.log("First few items:", sortedItems.slice(0, 5));
-      
-      setMenuItems(sortedItems);
-      setCafeSettings(settings[0] || {
-        cafe_name: "کافه رست",
-        location: "اردبیل"
-      });
+      // Load categories and menu items in parallel
+      const [categoriesData, menuData, settingsData] = await Promise.all([
+        Category.getPublicCategories(),
+        MenuItem.getPublicMenu(),
+        CafeSettings.getPublicSettings()
+      ]);
+
+      console.log("Categories loaded:", categoriesData.length);
+      console.log("Menu items loaded:", menuData.length);
+      console.log("Settings loaded:", settingsData);
+
+      setCategories(categoriesData);
+      setMenuItems(menuData);
+      setCafeSettings(settingsData);
       
       console.log("=== Menu.loadData() SUCCESS ===");
     } catch (error) {
-      console.error("=== Menu.loadData() ERROR ===");
-      console.error("Error details:", error);
+      console.error("Failed to load data:", error);
+      setError(error.message || "Failed to load menu data");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   const filteredItems = selectedCategory === "all" 
     ? menuItems 
-    : menuItems.filter(item => item.category === selectedCategory);
+    : menuItems.filter(item => item.category_id === selectedCategory);
 
-  const containerVariants = {
-    hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.08
-      }
+  const groupedItems = categories.reduce((acc, category) => {
+    const items = filteredItems.filter(item => item.category_id === category.id);
+    if (items.length > 0) {
+      acc.push({
+        ...category,
+        items: items
+      });
     }
-  };
+    return acc;
+  }, []);
 
-  return (
-    <div className="min-h-screen bg-gray-900">
-      <CafeHeader cafeSettings={cafeSettings} />
-
-      {/* Category Filter */}
-      <div className="sticky top-0 z-10 bg-gray-900/80 backdrop-blur-md border-b border-gray-700 px-4 py-4">
-        <div className="max-w-6xl mx-auto">
-          <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-            <Button
-              variant={selectedCategory === "all" ? "default" : "outline"}
-              onClick={() => setSelectedCategory("all")}
-              className={`whitespace-nowrap rounded-full px-4 ${selectedCategory === "all" 
-                ? "bg-teal-400 hover:bg-teal-500 text-gray-900 font-bold" 
-                : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"}`}
-            >
-              همه موارد
-            </Button>
-            {categories.map((category) => (
-              <Button
-                key={category.id}
-                variant={selectedCategory === category.id ? "default" : "outline"}
-                onClick={() => setSelectedCategory(category.id)}
-                className={`whitespace-nowrap rounded-full px-4 flex items-center gap-2 ${selectedCategory === category.id 
-                  ? "bg-teal-400 hover:bg-teal-500 text-gray-900 font-bold" 
-                  : "bg-gray-800 border-gray-700 text-gray-300 hover:bg-gray-700 hover:text-white"}`}
-              >
-                <span>{category.emoji}</span>
-                {category.name}
-              </Button>
-            ))}
-          </div>
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-600 mx-auto mb-4"></div>
+          <p className="text-amber-700 text-lg">در حال بارگذاری منو...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* Menu Content */}
-      <div className="max-w-7xl mx-auto px-4 py-8 md:px-6 md:py-12">
-        {loading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {Array(12).fill(0).map((_, i) => (
-              <Card key={i} className="animate-pulse">
-                <div className="h-48 bg-gray-200 rounded-t-lg"></div>
-                <CardContent className="p-4">
-                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-2/3"></div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : selectedCategory === "all" ? (
-          <div className="space-y-16">
-            {categories.map((category) => {
-              const categoryItems = menuItems.filter(item => item.category === category.id);
-              if (categoryItems.length === 0) return null;
-              
-              return (
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-500 text-6xl mb-4">⚠️</div>
+          <h2 className="text-2xl font-bold text-red-700 mb-2">خطا در بارگذاری</h2>
+          <p className="text-red-600 mb-4">{error}</p>
+          <Button 
+            onClick={loadData}
+            className="bg-red-600 hover:bg-red-700 text-white"
+          >
+            تلاش مجدد
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100">
+      {/* Header */}
+      <CafeHeader 
+        settings={cafeSettings}
+        onSettingsClick={() => window.location.href = createPageUrl("AdminLogin")}
+      />
+
+      {/* Category Filter */}
+      <div className="container mx-auto px-4 py-6">
+        <div className="flex flex-wrap gap-2 justify-center mb-8">
+          <button
+            onClick={() => setSelectedCategory("all")}
+            className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
+              selectedCategory === "all"
+                ? "bg-amber-600 text-white shadow-lg"
+                : "bg-white text-amber-700 hover:bg-amber-50"
+            }`}
+          >
+            همه
+          </button>
+          {categories.map((category) => (
+            <button
+              key={category.id}
+              onClick={() => setSelectedCategory(category.id)}
+              className={`px-4 py-2 rounded-full font-medium transition-all duration-200 ${
+                selectedCategory === category.id
+                  ? "bg-amber-600 text-white shadow-lg"
+                  : "bg-white text-amber-700 hover:bg-amber-50"
+              }`}
+            >
+              {category.emoji} {category.display_name}
+            </button>
+          ))}
+        </div>
+
+        {/* Menu Items */}
+        <AnimatePresence>
+          {groupedItems.length > 0 ? (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="space-y-8"
+            >
+              {groupedItems.map((category) => (
                 <CategorySection
                   key={category.id}
                   category={category}
-                  items={categoryItems}
-                  formatPrice={formatPrice}
-                />
-              );
-            })}
-          </div>
-        ) : (
-          <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 md:gap-8"
-          >
-            <AnimatePresence>
-              {filteredItems.map((item) => (
-                <MenuItemCard
-                  key={item.id}
-                  item={item}
-                  formatPrice={formatPrice}
+                  items={category.items}
                 />
               ))}
-            </AnimatePresence>
-          </motion.div>
-        )}
-
-        {!loading && filteredItems.length === 0 && (
-          <div className="text-center py-16">
-            <Coffee className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-600 mb-2">موردی یافت نشد</h3>
-            <p className="text-gray-500">در این دسته‌بندی آیتمی موجود نیست</p>
-          </div>
-        )}
+            </motion.div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="text-6xl mb-4">🍽️</div>
+              <h3 className="text-2xl font-bold text-amber-700 mb-2">
+                آیتمی یافت نشد
+              </h3>
+              <p className="text-amber-600">
+                {selectedCategory === "all" 
+                  ? "در حال حاضر آیتمی در منو موجود نیست"
+                  : "در این دسته‌بندی آیتمی موجود نیست"
+                }
+              </p>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
 
+      {/* Footer */}
+      <footer className="bg-amber-800 text-white py-8 mt-12">
+        <div className="container mx-auto px-4 text-center">
+          <div className="flex justify-center space-x-6 mb-4">
+            {cafeSettings.instagram_url && (
+              <a
+                href={cafeSettings.instagram_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:text-amber-300 transition-colors"
+              >
+                <Instagram className="w-6 h-6" />
+              </a>
+            )}
+            {cafeSettings.phone && (
+              <a
+                href={`tel:${cafeSettings.phone}`}
+                className="hover:text-amber-300 transition-colors"
+              >
+                <Phone className="w-6 h-6" />
+              </a>
+            )}
+          </div>
+          <p className="text-amber-200">
+            © 2024 {cafeSettings.name || "کافه رست"}. تمامی حقوق محفوظ است.
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
-

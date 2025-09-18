@@ -1,169 +1,210 @@
 import React, { useState } from "react";
-import { CafeSettings } from "../entities";
-import { Card, CardHeader, CardTitle, CardContent } from "../components/ui";
-import { Input } from "../components/ui";
-import { Button } from "../components/ui";
-import { Label } from "../components/ui";
-import { Alert, AlertDescription } from "../components/ui";
 import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "../utils";
-import { Coffee, Lock, User, ArrowRight } from "lucide-react";
+import { Coffee, Lock, User, Eye, EyeOff } from "lucide-react";
+import { Button } from "../components/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "../components/ui";
+import { motion } from "framer-motion";
+import apiService from "../services/api";
 
 export default function AdminLoginPage() {
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    username: "",
+    password: "",
+    adminType: "shop" // "main" or "shop"
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const handleLogin = async (e) => {
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+    // Clear error when user starts typing
+    if (error) setError("");
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
     try {
-      console.log("=== AdminLogin.handleLogin() START ===");
-      
-      const settings = await CafeSettings.list();
-      console.log("Loaded settings:", settings);
-      
-      let cafeSettings = settings[0];
+      console.log("=== AdminLogin.handleSubmit() START ===");
+      console.log("Admin type:", formData.adminType);
+      console.log("Username:", formData.username);
 
-      if (!cafeSettings) {
-        console.log("No settings found, creating default settings...");
-        // Create default settings if none exist
-        cafeSettings = await CafeSettings.create({
-          admin_username: "admin",
-          admin_password: "rest2024"
+      let response;
+      if (formData.adminType === "main") {
+        response = await apiService.loginMainAdmin({
+          username: formData.username,
+          password: formData.password
         });
-        console.log("Created default settings:", cafeSettings);
-      }
-
-      const adminUsername = cafeSettings?.admin_username || "admin";
-      const adminPassword = cafeSettings?.admin_password || "rest2024";
-
-      console.log("Checking credentials...");
-      console.log("Input username:", username);
-      console.log("Input password:", password);
-      console.log("Expected username:", adminUsername);
-      console.log("Expected password:", adminPassword);
-
-      if (username === adminUsername && password === adminPassword) {
-        console.log("Login successful");
-        // Store admin session
-        localStorage.setItem("adminLoggedIn", "true");
-        navigate(createPageUrl("AdminDashboard"));
       } else {
-        console.log("Login failed: invalid credentials");
-        setError("نام کاربری یا رمز عبور اشتباه است");
+        response = await apiService.loginShopAdmin({
+          username: formData.username,
+          password: formData.password
+        });
       }
-      
-      console.log("=== AdminLogin.handleLogin() END ===");
+
+      console.log("Login response:", response);
+
+      // Store token and user info
+      apiService.setToken(response.token);
+      localStorage.setItem('user_type', formData.adminType);
+      localStorage.setItem('user_info', JSON.stringify(response.user));
+
+      console.log("=== AdminLogin.handleSubmit() SUCCESS ===");
+
+      // Navigate to dashboard
+      navigate(createPageUrl("AdminDashboard"));
     } catch (error) {
-      console.error("=== AdminLogin.handleLogin() ERROR ===");
-      console.error("Error details:", error);
-      setError("خطا در ورود به سیستم: " + error.message);
+      console.error("Login failed:", error);
+      setError(error.message || "خطا در ورود. لطفاً اطلاعات را بررسی کنید.");
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-gradient-to-br from-green-900 via-emerald-800 to-teal-900"></div>
-      <div className="absolute inset-0 bg-black/20"></div>
-      
-      <Card className="w-full max-w-md relative z-10 border-none shadow-2xl glass-effect">
-        <CardHeader className="text-center pb-2">
-          <div className="w-16 h-16 mx-auto mb-4 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-lg">
-            <Coffee className="w-8 h-8 text-white" />
-          </div>
-          <CardTitle className="text-2xl font-bold text-gray-800 mb-2">
-            پنل مدیریت
-          </CardTitle>
-          <p className="text-gray-600 text-sm">کافه رست</p>
-        </CardHeader>
-
-        <CardContent className="space-y-6">
-          {error && (
-            <Alert variant="destructive" className="bg-red-50 border-red-200">
-              <AlertDescription className="text-red-800">
-                {error}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username" className="flex items-center gap-2 text-gray-700">
-                <User className="w-4 h-4" />
-                نام کاربری
-              </Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                className="border-gray-300 focus:border-green-500 focus:ring-green-500"
-                placeholder="نام کاربری خود را وارد کنید"
-              />
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-100 flex items-center justify-center p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="w-full max-w-md"
+      >
+        <Card className="shadow-2xl border-0">
+          <CardHeader className="text-center pb-8">
+            <div className="mx-auto w-16 h-16 bg-amber-100 rounded-full flex items-center justify-center mb-4">
+              <Coffee className="w-8 h-8 text-amber-600" />
             </div>
+            <CardTitle className="text-2xl font-bold text-amber-800">
+              ورود به پنل مدیریت
+            </CardTitle>
+            <p className="text-amber-600 mt-2">
+              لطفاً اطلاعات ورود خود را وارد کنید
+            </p>
+          </CardHeader>
 
-            <div className="space-y-2">
-              <Label htmlFor="password" className="flex items-center gap-2 text-gray-700">
-                <Lock className="w-4 h-4" />
-                رمز عبور
-              </Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                className="border-gray-300 focus:border-green-500 focus:ring-green-500"
-                placeholder="رمز عبور خود را وارد کنید"
-              />
-            </div>
-
-            <Button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 transition-all duration-300 shadow-lg"
-            >
-              {loading ? (
-                <div className="flex items-center gap-2">
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                  در حال ورود...
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Admin Type Selection */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-amber-700">
+                  نوع ادمین
+                </label>
+                <div className="flex space-x-4">
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="adminType"
+                      value="shop"
+                      checked={formData.adminType === "shop"}
+                      onChange={handleInputChange}
+                      className="mr-2 text-amber-600"
+                    />
+                    <span className="text-sm text-amber-700">ادمین فروشگاه</span>
+                  </label>
+                  <label className="flex items-center">
+                    <input
+                      type="radio"
+                      name="adminType"
+                      value="main"
+                      checked={formData.adminType === "main"}
+                      onChange={handleInputChange}
+                      className="mr-2 text-amber-600"
+                    />
+                    <span className="text-sm text-amber-700">ادمین اصلی</span>
+                  </label>
                 </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span>ورود</span>
-                  <ArrowRight className="w-4 h-4" />
+              </div>
+
+              {/* Username */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-amber-700">
+                  نام کاربری
+                </label>
+                <div className="relative">
+                  <User className="absolute right-3 top-1/2 transform -translate-y-1/2 text-amber-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    name="username"
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full pr-10 pl-4 py-3 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-right"
+                    placeholder="نام کاربری خود را وارد کنید"
+                  />
+                </div>
+              </div>
+
+              {/* Password */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-amber-700">
+                  رمز عبور
+                </label>
+                <div className="relative">
+                  <Lock className="absolute right-3 top-1/2 transform -translate-y-1/2 text-amber-400 w-5 h-5" />
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    value={formData.password}
+                    onChange={handleInputChange}
+                    required
+                    className="w-full pr-10 pl-12 py-3 border border-amber-200 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent text-right"
+                    placeholder="رمز عبور خود را وارد کنید"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute left-3 top-1/2 transform -translate-y-1/2 text-amber-400 hover:text-amber-600"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
+                  {error}
                 </div>
               )}
-            </Button>
-          </form>
 
-          <div className="text-center">
-            <Button
-              variant="link"
-              onClick={() => navigate(createPageUrl("Menu"))}
-              className="text-gray-600 hover:text-gray-800 text-sm"
-            >
-              بازگشت به منو
-            </Button>
-          </div>
+              {/* Submit Button */}
+              <Button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white py-3 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                    در حال ورود...
+                  </div>
+                ) : (
+                  "ورود"
+                )}
+              </Button>
+            </form>
 
-          {/* Default Credentials Info */}
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-blue-800 font-medium mb-2">اطلاعات پیش‌فرض:</p>
-            <p className="text-xs text-blue-700">نام کاربری: admin</p>
-            <p className="text-xs text-blue-700">رمز عبور: rest2024</p>
-            <p className="text-xs text-blue-600 mt-2">می‌توانید این اطلاعات را در پنل مدیریت تغییر دهید</p>
-          </div>
-        </CardContent>
-      </Card>
+            {/* Back to Menu */}
+            <div className="mt-6 text-center">
+              <button
+                onClick={() => navigate(createPageUrl("Menu"))}
+                className="text-amber-600 hover:text-amber-700 text-sm font-medium"
+              >
+                ← بازگشت به منو
+              </button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
     </div>
   );
 }
